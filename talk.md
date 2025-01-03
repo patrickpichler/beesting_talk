@@ -14,17 +14,18 @@ though.
 At my day job,  I am part of a team that develops  a Kubernetes agent to perform
 runtime detection of anomalous behavior.
 
-Let me take you  back to August 2024, where I had a  discussion with a colleague
-of mine, Markus. In  my day job, I am part of a  team that implements Kubernetes
-runtime detections  via an agent running  on nodes and we  were discussing about
-some high fidelity events. By high fidelity I mean events that when detected, we
-can  be pretty  sure that  something fishy  is  going on  in a  pod. During  the
-discussion,  he brought  up  a blog  post  of  his and  a  few former  Dynatrace
-colleagues wrote, in  which they outlined how to inject  and monitor Honeytokens
-into Pods via  Kyverno's mutating webhook features and using  Tetragon to detect
-file access. The main premise of the  idea was that, if we could detect somebody
-accessing that file, we would know  with a pretty high certainty, that something
-is off in that pod.
+Let me take you back to August 2024.  To escape the raging heat outside I was in
+a coworking space,  as usual. The cool  breeze of the AC is  welcomed change, to
+the 30  degree in  my home office.  There I  was, in the  conference box  in the
+coworking space, talking to  a colleague of mine in video  chat, Markus. We were
+babbling on  about new sources  of events to be  used used, to  detect malicious
+behavior in Kubernetes pods.
+
+During the discussion a  blog post of him and a  few former Dynatrace colleagues
+was mentioned. They outlined a way  of injecting and monitoring Honeytokens into
+Pods via Kyverno and using Tetragon to detect file access. The main premise of
+the idea was that, if they could detect somebody accessing that file, they would
+know that something is off.
 
 I immediately fell in love with the idea. It sounded simple on paper and from
 what I can tell, it would be highly effective. My only issue with the solution

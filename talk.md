@@ -42,10 +42,6 @@ places where one would usually expect tokens of high value, meaning an potential
 attacker would probe those locations and access the Honeytoken. A pretty good
 example for this would be Kubernetes service account tokens.
 
-The main idea of Beesting would be, to inject some bait files into pods.
-Injecting the bait is only half the story though, as we need to closely monitor
-usage of the Honeytoken.
-
 To better understand  the usefulness of all  of this, we will  now put ourselves
 into the  shoes of  an attacker.  Imagine we are some evil Hackers that are
 currently probing some public facing CMS for any vulnerabilities. We find a RCE
@@ -153,9 +149,9 @@ NRI plugin  is even  enabled by default.  This would be  amazing, as  this would
 allow us to use Beesting with the  two most widely spread container runtimes and
 maybe even more in  the future! NRI works by exposing a GRPC  API through a unix
 socket, that can be used to register  plugins with it. The NRI API exposes quite
-a few different callbacks such  as: `CreateContainer`, `UpdateContainer` and various
-state change events like  `PostCreateContainer` or `RunPodStandbox`. Callbacks, such
-as `CreateContainer` or `UpdateContainer`, grant us  the power to modify anything we
+a  few different  callbacks  such as:  `CreateContainer`, `UpdateContainer`  and
+various  state change  events  like  `PostCreateContainer` or  `RunPodStandbox`.
+Callbacks, such  as `CreateContainer` grant us  the power to modify  anything we
 want of the container  before it will be handed over  to runC, including mounts,
 as well as so  called OCI hooks. OCI hooks are a  standardized way of specifying
 commands that runC  will execute at certain stages when  running a container. We
@@ -190,7 +186,7 @@ arguments to pass to the hook, as well as some env variables and timeout for the
 hook to finish before being killed. The  context of the path argument can either
 be from the  point of view of the  host, or from within the  container, which is
 depending on  the hook you want  to use. The  full list of possible  hook points
-are: prestart, createRuntime,  `createContainer`, `startContainer`, `poststart`,
+are: `prestart`, `createRuntime`,  `createContainer`, `startContainer`, `poststart`,
 `poststop`. The `createContainer` hook will  resolve the specified binary in the
 same mount namespace as the runtime, but  it will run in the  namespace of the
 resulting container. It allows us to  customize the container, before it will be
@@ -229,20 +225,21 @@ Did you spot it?  `/tmp` is mounted as `NOEXEC`, meaning  even though our binary
 has the  executable flag set,  Linux refuses to run  anything from there.  So we
 need  to think  about  a different  folder then.  After  some discussions  about
 Beesting  with a  colleague at  Cast.AI,  he pointed  out, that  Istio is  doing
-something similar.  After checking  their source  code, we  found that  Istio is
-extracting its binary under `/opt/cni/bin`. I guess it should be fine to extract
-the Beesting hook then under `/opt/beestinger/bin`.  Let's try! Look at that! It
-worked! If we now  `exec` into the container, we can see  that a Honeytoken file
-is created under the specified location!
+something  similar. Shoutout  to Samuel!  After checking  their source  code, we
+found  that Istio  is extracting  its binary  under `/opt/cni/bin`.  I guess  it
+should be  fine to extract  the Beesting hook then  under `/opt/beesting/bin`.
+Let's try! Look at that! It worked! If  we now `exec` into the container, we can
+see that a Honeytoken file is created under the specified location!
 
 Awesome, we  have a  first solution  to inject the  token! I  am not  100% happy
-though. Embedding the OCI hook binary and extracting it at startup adds too much
-complexity if  you ask  me. Maybe  there is a  simpler way?  What if  instead of
-injecting the OCI hook into the container  on startup, we simply inject a `bind`
-mount of a Honeytoken file under the  specified location? Just as a refresher, a
-`bind` mount allow  us to mount a  file or folder from one  location to another,
-while it being  accessible at both places.  This means we can mount  a file from
-the runtimes namespace into the container. So the plan would be, to generate our
+though. Embedding the OCI hook binary and  extracting it at startup , as well as
+keeping track in which context the binaries are executed adds to much complexity
+if you ask  me. Maybe there is a  simpler way? What if instead  of injecting the
+OCI hook  into the container on  startup, we simply  inject a `bind` mount  of a
+Honeytoken file  under the  specified location?  Just as  a refresher,  a `bind`
+mount allow us to mount a file or  folder from one location to another, while it
+being  accessible at  both places.  This  means we  can  mount a  file from  the
+runtimes namespace  into the container.  So the plan  would be, to  generate our
 Honeytoken file at a place accessible from  the runtime namespace and use NRI to
 modify  the created  container to  feature  a `bind`  mount used  to inject  our
 Honeytoken file  into the container. Since  the Honeytoken is just  a plain file
@@ -304,11 +301,13 @@ Index  Node and  contains metadata  of the  file, such  as file  permissions and
 owners. Each file in a filesystem has a unique inode number.
 
 The  monitoring part  is trickier  than it  sounds. There  are multiple  ways of
-interacting with files. For example, we  could hook the `read` syscall, but then
-we would miss out on any access via the `splice` syscall. We also need to take
-into consideration an attacker might simply symlink our file in order to mask
-accessing it.
+interacting with files. For example, we  could hook the `open` syscall, but then
+we would miss out  on any access via the `openat` syscall. We  also need to take
+into consideration  an attacker might simply  symlink our file in  order to mask
+accessing it. There  are even a few  ways of getting access to  the file without
+calling `open` at all.
 
+<!-- TODO(patrick.pichler): maybe drop this -->
 Another thing to watch  out for, even though we can hook  pretty much any kernel
 function we want, this only works if the function is not inlined in the compiled
 kernel. Meaning,  we need  to put some  thought into what  functions we  want to

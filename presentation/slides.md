@@ -62,14 +62,18 @@ upon Linux and the cloud. This definitely transformed me into a full-on Linux ne
 -->
 
 ---
-layout: image
-image: /time.jpg
-backgroundSize: 110%
+layout: fact
+class: bg-[#dd7878] color-[#eff1f5]
 ---
 
-<div class="attribution">
-    <a href="https://www.freepik.com/free-photo/close-up-woman-with-watch_21768055.htm#fromView=search&page=1&position=28&uuid=a87f4551-9928-476a-9f10-f078c92b901e">Image by Freepik</a> on Freepik
-</div>
+<span style="text-shadow: 2px 1px #181926;">
+<span class="text-size-6xl">
+    Let me take you back to<br/>
+</span>
+<span class="text-size-7xl" >
+    August 2024
+</span>
+</span>
 
 ---
 layout: image
@@ -91,10 +95,11 @@ backgroundSize: 80%
 layout: image
 image: /honeytoken.jpg
 backgroundSize: 100%
+class: color-[#eff1f5]
 ---
 
 <div class="h-full" style="display: flex; justify-content: end; flex-direction: column">
-    <span id="headline" style="color: #eff1f5">
+    <span id="headline">
         <span class="fancy-headline-small">What even is a</span><br/>
         <span class="fancy-headline">Honeytoken?</span>
     </span>

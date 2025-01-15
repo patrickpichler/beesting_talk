@@ -16,11 +16,12 @@ agent, that can detect anomalous  behavior in your workloads, called kvisor.
 Let me take you back to August 2024.  I was in call with my colleague Markus and
 we were discussing ways of improving our detection capabilities.
 
-During  the discussion,  he brought  up a  blog  post by  him and  a few  former
-Dyantrace coworkers. They outlined a way of injecting and monitoring Honeytokens
-into Pods via Kyverno and using Tetragon to detect file access. The main premise
-of the idea  was that, if they  could detect somebody accessing  that file, they
-would know that something is off.
+During the  discussion, he  brought up  a blog  post by  a few  former Dynatrace
+colleagues and him,  in which they outlined a way  of injecting Honeytokens into
+containers and monitoring them. The main  premisse was that if they could detect
+somebody accessing  one of the  Honeytokens, they  would know that  something is
+off. To achieve this, they are using Kyverno for File injection and Tetragon for
+monitoring the access.
 
 I immediately fell  in love with the  idea. It sounded simple on  paper and from
 what I can tell,  it would be highly effective. My only  issue with the solution
@@ -30,25 +31,29 @@ there has to be an easier way. After a bit of searching the internet, I couldn't
 find anyone doing this  in a single component. This was the  moment the idea for
 Beesting was born.
 
-Before I will tell you about my journey of implementing beesting, we should answer
-the question of what even is a Honeytoken.
+Before I  will tell  you about  my journey of  implementing beesting,  we should
+answer the question of what even is a Honeytoken.
 
 Put simply,  you can think of  a Honeytoken as  digital bait. They are  put into
 places where one would usually expect tokens of high value, meaning an potential
 attacker  would access  those files.  A pretty  good example  for this  would be
 Kubernetes service account tokens.
 
-To better understand  the usefulness of all  of this, we will  now put ourselves
-into  the shoes  of an  attacker.  Imagine we  are  some evil  Hackers that  are
-currently probing some public facing CMS  for any vulnerabilities. We find a RCE
-and now have a shell  in the CMS machine. Let us see if  we can find any secrets
-by looking at the `env` variables. Hmm no  secrets, but a lot of them start with
+To better understand the usefulness of all of this, we will put on our Ski Masks
+and Hoodie,  to see the  power of Honeytokens from  an evil hackers  eyes. After
+searching the  internet for  potential targets, we  stumble across  this company
+website running a simple  CMS. Some quick probing later, we  figured out that it
+is in  fact SimpleCMS. A quick  trip to exploit-db  later and we found  a pretty
+severe RCE  vulnerability we  can exploit. We  now have a  shell to  the machine
+running  the  CMS.  Since  it  is common  to  inject  secrets  via  envisionment
+variables, we check  the output of the  `env` commands for any  tokens of value.
+Hmm no  secrets, but  there is  a large  number of  env variables  starting with
 `KUBERNETES_`. This highly suggests the CMS  is running inside a Kubernetes Pod.
 Next step, would be to see if  we can find any secrets under `/var/run/secrets`.
 This is  a common location  to mount service account  tokens and any  other file
 based  secrets.  And  we  got  lucky  it  seems,  we  find  a  directory  called
-`/var/run/secrets/eks.amazonaws.com`, which has a file called `access_key_token`
-in it. Sounds promising! We simply use `cat` to get the token then.
+`/var/run/secrets/eks.amazonaws.com`. Let us check it's content. Oho the `access_key_token`
+file sounds promising. We are going to use `cat` now to extract the secret.
 
 What we  didn't know, the  file accessed  was a Honeytoken  put in place  by the
 security team  of the  company hosting  the CMS.  By accessing  it, the  pod was
@@ -64,16 +69,17 @@ need to  understand the architecture  of Kubernetes  a bit better.  A Kubernetes
 cluster can be  separated into two parts  the control plane, this  is where ETCD
 and the API  server runs, and the data  plane. Any app we submit  to the cluster
 will  run on  nodes, which  are part  of the  data plane.  Kubernetes nodes  are
-usually Linux machines, where the Kubelet runs. Kubelet will get the pods to run
-on the  current machine  from the API  server. It will  then communicate  with a
-container runtime,  most often containerD,  and instructs it what  containers to
-run. This  communication happens via the  Container Runtime Interface or  CRI in
-short.  Container runtimes  then download  whatever image  was specified  in the
-container and  spawn it  via a  low level  runtime such  as runC.  Linux doesn't
-really have the concept of a container. They are pretty much made out of control
-groups, also called Cgroups and namespaces.  Cgroups allow to limit the resource
-usage, such  as CPU and  memory, whereas with  namespaces we can  separate areas
-such as networking or file mounts.
+usually Linux machines, where the Kubelet runs.
+
+It is kubelets job  to communicate with the API server to  figure out what needs
+to  be running  on  it node.  Pods  are  then started  by  communicating with  a
+Container Runtime, which in most cases will be containerD. The Container runtime
+then download  whatever image was specified  in the container spec  and spawn it
+via a low level runtime such as runC. Linux doesn't really have the concept of a
+container. They are pretty much made  out of control groups, also called Cgroups
+and  namespaces. Cgroups  allow to  limit the  resource usage,  such as  CPU and
+memory, whereas with namespaces we can separate areas such as networking or file
+mounts.
 
 Awesome,  with this  out of  the way,  how  do we  get the  Honeytoken into  the
 containers?
@@ -103,13 +109,11 @@ API.  There are  several reasons  I decided  against that  approach though.  The
 biggest was that injecting the Honeytoken is  only half the bargain. So either I
 expose  the mutating  webhook API  from all  agents, or  I would  need to  split
 Beesting into two parts. This means my  initial goal of a single component would
-be out  of the window. The  next problem I have  with this approach, it  is very
-Kubernetes specific.  Not the biggest  deals, but still, if  I can make  it more
-general, that is  a nice win. Last,  but not least, it just  didn't sounded that
-much fun.  I wanted to  start Beesting to research  into something new  and just
-using a mutating webhook didn't get me  that exited. Maybe in the future, I give
-this approach another shot though, but since I work on Beesting in my free time,
-I will spend my time on whatever looks fun first probably.
+be out  of the  window. Additionally, it  just didn't sounded  that much  fun. I
+wanted  to start  Beesting  to research  into  something new  and  just using  a
+mutating webhook  didn't get me  that exited. Maybe in  the future, I  give this
+approach another shot  though, but since I  work on Beesting in my  free time, I
+will spend my time on whatever looks fun first probably.
 
 Ok, so  the Admission Controller is  off the table.  How else can we  inject our
 sweet Honeytokens into containers? Looking  back at the Kubernetes architecture,
@@ -188,20 +192,18 @@ Honeytoken file.
 By the way, for now we will solely focus on injecting the token file into the
 container. The monitoring part, we will solve later. One step at a time.
 
-The first PoC  of Beesting was structured as follows:  On startup, Beesting will
-put  our  hook  binary  at  a specified  location  reachable  from  the  runtime
-mount  namespace. The  sole  purpose  of the  hook  is to  create  a  file at  a
-location  specified  via  the  first  argument  and  write  to  it  whatever  is
-passed  as  the second  argument.  Beesting  will  then  register a  NRI  plugin
-with  the `CreateContainer`  hook  specified.  Once called,  it  will inject  an
-`createContainer` OCI hook into the container definition, which will execute the
-binary we extraced  during startup. It will  set whatever path we tell  it to as
-the target  argument and set  a randomly generated token  as the argument  to be
-written by  the hook. runC will  then handle the rest,  as it will run  the hook
-once it  tries to create the  container. This should then  create our Honeytoken
-inside the container filesystem. Sound like a plan!
+The first  version of the PoC  looks as follows:  On start, Beesting will  put a
+hook  binary  at a  predefined  location,  that  should  be reachable  from  the
+cotnainer  runtime.  Next,  it  registers  itself as  a  NRI  plugin,  with  the
+`CreateContainer` hook.  Once a container  is created,  the hook will  adapt the
+container spec to feature a `createContainer` OCI hook, pointing at the location
+we  extracted  the hook  to.  It  also will  pass  the  target location  of  the
+honeytoken in the  container as the first  argument to the hook, as  well as the
+files content as the second. The rest in then handled by the low level container
+runtime, which will  execute the hook, causing  it to put the  honeytoken at the
+wanted location inside the container.
 
-In theory  it should be enough  to just mount `/tmp/beestinger`  as a `hostPath`
+In theory  it should be enough  to just mount `/tmp/beesting`  as a `hostPath`
 volume and move a  binary there somehow. I decided to simply  embed the OCI hook
 binary into Beesting itself,  as this should be easier to  handle. On startup
 it will always override any existing hook binaries with a compatible version.
@@ -245,7 +247,7 @@ can mount a file from the runtimes namespace into the container.
 The architecture  for PoCv2 then looks  as follows: Once again  is registering a
 `CreateContainer`  NRI callback.  Since  the  Honeytoken is  just  a plain  file
 without the  need to  be executable,  we can  use a  `hostPath` volume  mount to
-`/tmp/beestinger`. When  we get  notified by  the NRI, that  a new  container is
+`/tmp/beesting`. When  we get  notified by  the NRI, that  a new  container is
 created, we simply create a file with the container ID under `/tmp/beesting` and
 update  the containers  definition to  feature a  bind mount  to our  predefined
 Honeytoken place. And that is pretty much it!
@@ -263,19 +265,30 @@ Monitoring its access.
 
 This is where the Bee in Beesting comes in. We are going to use eBPF.
 
-For those of you who do not know  eBPF, it can be compared to what JavaScript is
-for the  Browser, but for  the Linux kernel.  Sounds strange, but  is incredibly
-useful. Before eBPF it  was hard to extend the Linux  kernel. eBPF changed this,
-by offering  a secure way  of injecting  code into the  kernel. One of  the most
-common use cases  of eBPF is in  monitoring, since it allows us  to attach small
-programs  to either  predefined  hook points  in the  kernel,  or even  abitrary
-functions. eBPF  code is  compiled to a  bytecode, that is  then run  inside the
-kernel space in a VM. To ensure that  eBPF code is safe to run and doesn't crash
-the kernel, it  must pass the so  called verifier. The verifier  will go through
-all possible code paths inside your eBPF program and enforce certain boundaries.
-For  example, it  is illegal  to have  unbounded loops  in eBPF,  as this  would
-effectively stall the kernel once it  transfers control to an eBPF program. Once
-the verifier gives it ok, the program should be safe to run.
+For those of you who do not know eBPF, it is to the kernel what javascript is to
+the browser. Sounds strange, but is  incredibly useful. Before eBPF, it was very
+hard to extend  the linux kernel in a  safe and secure manner. The  only way you
+had were pretty much kernel modules. As  we have learned before, a single bug in
+a kernel module can bring down your whole machine though. Not very secure.
+
+eBPF  changed this,  by introducing  a safe  and secure  way of  attaching small
+programs to predefined hooks in the kernel, as well as just arbitrary functions.
+
+Usually, eBPF is written  in a subset of C, that is then  compiled to byte code.
+The byte code is then loaded into the  linux kernel and runs on a VM. In reality
+though, the byte  code is Just-In-Time compiled to native  code, for performance
+reasons. To ensure safety,  the byte code must pass the  verifier, before it can
+be loaded into the kernel. It is the verifiers job, to go through all code paths
+of the eBPF program and ensure that everything is safe and sound.
+
+For example, unbounded  loops are forbidden. If encountered by  the verifier, it
+will  reject your  program. The  reason  for this  is,  that it  is pretty  much
+impossible to  know if an unbounded  loop will ever terminate,  unless of course
+you solved the halting problem, which you probably don't. This means that when
+the kernel passes on control to the eBPF program, it could stall the kernel
+forever. Not good.
+
+Once the verifier gives its OK though, the program is safe to run.
 
 In order  to store state  and share data, eBPF  introduced the concept  of maps.
 Maps are data structures,  which can be access from both  kernel and user space.
@@ -284,8 +297,8 @@ use  cases  of maps  include  sharing  events  such  as certain  syscalls  being
 triggered with user space, writing configuration  from the user space program to
 eBPF or storing context to further enhance collected data.
 
-Maps come  in different  types and  shapes. There are  map types  for particular
-operations,  such  as first-in-first-out  queues,  LRU  data storage  or  simple
+There is a variety of map types available. All of them are solving certain use
+cases such  as first-in-first-out  queues,  LRU  data storage  or  simple
 arrays. There is even a map type representing a hash map.
 
 You cannot just  call any kernel function  from an eBPF program, as  it would be
@@ -296,10 +309,18 @@ example there are helper functions to interact  with eBPF maps or read data from
 memory.
 
 Now that we have a basic understanding what eBPF is and allows us to do, how are
-we going to detect if a file has been access? To keep things simple, all we need
-to know is, that  in Linux, each file has an associated  inode. Inode stands for
-Index  Node and  contains metadata  of the  file, such  as file  permissions and
-owners. Each file in a filesystem has a unique inode number.
+we going to detect if a file has been access?
+
+For this, we  will have a quick look  at what even is a file  in linux? Spoiler,
+this will be once again a great simplification, that should still give us enough
+inside to  understand how  things work. As  we have heard  before, all  files on
+linux live on a  file system. Each file is represented by a  so called inode, or
+index node. Inodes consist  of a unique number, or at least  unique for the file
+system, which in the  end is just the index of the inode  in the inode table. It
+also contains some metadata of the file,  such as the file type, the permission,
+as  well as  the  owner and  the  size. Inodes  also contain  a  pointer to  the
+underlying block where the  content of the file lives. This  is where the binary
+for that one funny cat video is stored.
 
 The  monitoring part  is trickier  than it  sounds. There  are multiple  ways of
 interacting with files. For example, we  could hook the `open` syscall, but then
@@ -316,11 +337,13 @@ certain actions, such as creating files. We  are not going to dive any deeper on
 LSM, as Beesting  is not really using  it, but instead hooks  the same functions
 used to evaluate permissions.
 
-If a user space  application calls the `open` syscall, the  kernel will call one
-of  those LSM  hook  functions,  called `security_file_open`,  to  check if  the
-process has permissions  to open it. If  it does, the kernel  will continue with
-accessing the file via the VFS interface.  We will just attach a eBPF program to
-it, in order to always get notified, if a file is beinng opened.
+It will look as follows. Imagine we ahvea  service called `my-fancy-service` that
+is trying to open a file, through the `open` syscall. The kernel will now call the
+`security_file_open` hook, which is part of LSM, to evaluate if if the process
+has permissions to open that certain file. If it does, the kernel will go ahead
+and call the corresponding open function defined via the virtual file system.
+What beesting is doing, it is hooking the `security_file_open` function to get
+notified, if a file is being opened.
 
 To combine  everything: PoCv3  is based  on PoCv2 for  the file  injection part.
 During file  injection, it  now also records  the inode, as  well as  the device

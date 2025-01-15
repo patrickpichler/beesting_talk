@@ -802,7 +802,7 @@ layout: section
 
 <div class="text-size-5xl">
 
-* ext2, ext3, ext3
+* ext2, ext3, ext4
 * BTRFS
 * XFS
 * ZFS

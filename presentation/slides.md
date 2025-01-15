@@ -48,6 +48,8 @@ layout: full
 <h2>Kubernetes wizard <noto-magic-wand /></h2>
 <br/>
 <h2>Linux Nerd <devicon-linux /></h2>
+<br/>
+<h2>Currently at CAST AI</h2>
 </div>
 
 <div>

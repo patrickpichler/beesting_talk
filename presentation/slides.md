@@ -1642,9 +1642,10 @@ backgroundSize: 80%
 
 ---
 layout: fact
+class: bg-[#1e66f5] color-[#eff1f5]
 ---
 
-<span class="text-size-8xl">
+<span class="text-size-8xl" style="text-shadow: 2px 1px #232634;">
     Linux Security Modules
 </span>
 
